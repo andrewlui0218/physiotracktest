@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
 import { X, Camera } from 'lucide-react';
 
@@ -8,7 +8,6 @@ interface ScannerProps {
 }
 
 const Scanner: React.FC<ScannerProps> = ({ onScanSuccess, onClose }) => {
-  const [error, setError] = useState<string>('');
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   useEffect(() => {
@@ -43,7 +42,7 @@ const Scanner: React.FC<ScannerProps> = ({ onScanSuccess, onClose }) => {
              scanner.clear();
         }
       },
-      (errorMessage) => {
+      (_) => {
         // parse error, ignore mostly
       }
     );
@@ -75,12 +74,6 @@ const Scanner: React.FC<ScannerProps> = ({ onScanSuccess, onClose }) => {
         </div>
 
         <div id="reader" className="w-full h-64 sm:h-80 bg-black"></div>
-
-        {error && (
-            <div className="p-3 bg-red-100 text-red-700 text-sm text-center">
-                {error}
-            </div>
-        )}
         
         <div className="p-4 text-center">
             <p className="text-xs text-gray-400">Supported format: PHYA followed by digits</p>

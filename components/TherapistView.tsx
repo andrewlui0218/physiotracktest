@@ -279,7 +279,7 @@ const TherapistView: React.FC<TherapistViewProps> = ({ initialPatientId, existin
         <div className="bg-white rounded border border-gray-200 p-3">
            <h3 className="font-semibold text-slate-700 mb-2">Additional Exercises</h3>
            <div className="space-y-2">
-             {freeTextRows.map((row, idx) => (
+             {freeTextRows.map((row) => (
                 <div key={row.id} className="flex gap-2">
                   <input 
                     type="text" 
