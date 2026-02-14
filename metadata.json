@@ -1,0 +1,7 @@
+{
+  "name": "PhysioTrack",
+  "description": "Digital Physiotherapy Exercise Prescription System replacing paper sheets.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
