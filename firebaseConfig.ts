@@ -4,12 +4,12 @@ import { getFirestore } from "firebase/firestore";
 // TODO: REPLACE THESE VALUES WITH YOUR OWN FROM FIREBASE CONSOLE
 // Go to Project Settings -> General -> Your Apps -> Web SDK configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDPLzLLYp1nU_lY1v-tpTaYl3Tijdp6bj8",
-  authDomain: "physiotracktest.firebaseapp.com",
-  projectId: "physiotracktest",
-  storageBucket: "physiotracktest.firebasestorage.app",
-  messagingSenderId: "145457313602",
-  appId: "1:145457313602:web:ea40f44454f9f453cdfadb"
+  apiKey: "AIzaSyDOC-YOUR-API-KEY-HERE",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef"
 };
 
 // Initialize Firebase
