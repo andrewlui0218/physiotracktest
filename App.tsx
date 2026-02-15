@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mode, PatientData } from './types';
 import Scanner from './components/Scanner';
 import TherapistView from './components/TherapistView';
 import PatientView from './components/PatientView';
-import { getPatientData } from './services/storageService';
-import { Activity, Stethoscope, User, Scan } from 'lucide-react';
+import { getPatientData, subscribeToAllPatients } from './services/storageService';
+import { Activity, Stethoscope, User, Scan, Wifi, WifiOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>('home');
@@ -12,6 +12,22 @@ const App: React.FC = () => {
   const [currentPatientId, setCurrentPatientId] = useState<string | null>(null);
   const [patientData, setPatientData] = useState<PatientData | null>(null);
   const [loading, setLoading] = useState(false);
+  
+  // Local Cache State
+  const [patientCache, setPatientCache] = useState<Record<string, PatientData>>({});
+  const [isSynced, setIsSynced] = useState(false);
+
+  // 1. Start Background Download on App Mount
+  useEffect(() => {
+    // This creates a live connection to the database.
+    // Data is downloaded silently while the user is on the home screen.
+    const unsubscribe = subscribeToAllPatients((data) => {
+        setPatientCache(data);
+        setIsSynced(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const startScan = (selectedMode: Mode) => {
     setMode(selectedMode);
@@ -22,21 +38,30 @@ const App: React.FC = () => {
 
   const handleScanSuccess = async (decodedText: string) => {
     setIsScanning(false);
-    setLoading(true);
     setCurrentPatientId(decodedText);
 
+    // 2. INSTANT RETRIEVAL STRATEGY
+    // Check local cache first (0ms delay)
+    if (patientCache[decodedText]) {
+        console.log("⚡ Instant load from cache");
+        setPatientData(patientCache[decodedText]);
+        return; 
+    }
+
+    // Fallback: If not in cache (e.g. new patient added elsewhere just now), fetch from server
+    setLoading(true);
     try {
       const data = await getPatientData(decodedText);
       setPatientData(data);
     } catch (error) {
       console.error("Error fetching data", error);
+      alert("Could not retrieve data. Check internet connection or ensure ID exists.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleManualEntry = (id: string) => {
-      // For testing without camera
       handleScanSuccess(id);
   };
 
@@ -45,7 +70,7 @@ const App: React.FC = () => {
       return (
         <div className="flex flex-col items-center justify-center h-screen bg-slate-50">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-slate-500">Loading Patient Records...</p>
+          <p className="text-slate-500">Retrieving Cloud Records...</p>
         </div>
       );
     }
@@ -69,7 +94,7 @@ const App: React.FC = () => {
             setCurrentPatientId(null);
           }}
           onSaveComplete={() => {
-            alert("Prescription Saved Successfully!");
+            // No alert needed, smoother UX
             setMode('home');
             setCurrentPatientId(null);
           }}
@@ -91,18 +116,20 @@ const App: React.FC = () => {
 
     if (mode === 'patient' && currentPatientId && !patientData) {
         return (
-            <div className="flex flex-col items-center justify-center h-screen p-6 text-center">
+            <div className="flex flex-col items-center justify-center h-screen p-6 text-center bg-slate-50">
                 <div className="bg-red-100 p-4 rounded-full mb-4">
                     <Activity className="w-8 h-8 text-red-500" />
                 </div>
-                <h2 className="text-xl font-bold mb-2">No Prescription Found</h2>
-                <p className="text-gray-600 mb-6">Patient ID: {currentPatientId}</p>
-                <button 
-                  onClick={() => { setMode('home'); setCurrentPatientId(null); }}
-                  className="bg-gray-200 px-6 py-2 rounded-lg"
-                >
-                    Back to Home
-                </button>
+                <h2 className="text-xl font-bold mb-2 text-slate-800">No Prescription Found</h2>
+                <p className="text-slate-600 mb-6 font-mono bg-slate-200 px-3 py-1 rounded inline-block">{currentPatientId}</p>
+                <div className="space-y-3 w-full max-w-xs">
+                    <button 
+                    onClick={() => { setMode('home'); setCurrentPatientId(null); }}
+                    className="w-full bg-white border border-slate-300 px-6 py-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50"
+                    >
+                        Back to Home
+                    </button>
+                </div>
             </div>
         )
     }
@@ -110,6 +137,20 @@ const App: React.FC = () => {
     // Home Screen
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
+        <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-white/50 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
+             {isSynced ? (
+                <>
+                    <Wifi className="w-4 h-4 text-green-600" />
+                    <span className="text-[10px] text-green-700 font-medium">Ready</span>
+                </>
+             ) : (
+                <>
+                    <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-[10px] text-slate-500 font-medium">Syncing DB...</span>
+                </>
+             )}
+        </div>
+
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center p-4 bg-white rounded-full shadow-md mb-4">
             <Activity className="w-10 h-10 text-primary" />
@@ -149,19 +190,19 @@ const App: React.FC = () => {
         </div>
 
         <div className="mt-12 text-center">
-            <p className="text-xs text-gray-400 mb-2">No barcode? Test with:</p>
-            <div className="flex gap-2 justify-center">
+            <p className="text-xs text-gray-400 mb-2">Test IDs (Tap to sim scan):</p>
+            <div className="flex flex-wrap gap-2 justify-center">
                 <button 
                   onClick={() => handleManualEntry('PHYA1234567A')}
-                  className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600 hover:bg-gray-300"
+                  className="text-xs bg-slate-200 px-3 py-1.5 rounded-full text-slate-600 hover:bg-slate-300 font-mono transition-colors"
                 >
                     PHYA1234567A
                 </button>
                  <button 
-                  onClick={() => handleManualEntry('PHYA9999999X')}
-                  className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600 hover:bg-gray-300"
+                  onClick={() => handleManualEntry('PHYA-25-20453(B)')}
+                  className="text-xs bg-slate-200 px-3 py-1.5 rounded-full text-slate-600 hover:bg-slate-300 font-mono transition-colors border border-slate-300"
                 >
-                    PHYA9999999X
+                    PHYA-25-20453(B)
                 </button>
             </div>
         </div>
