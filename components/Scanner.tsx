@@ -16,150 +16,159 @@ const Scanner: React.FC<ScannerProps> = ({ onScanSuccess, onClose }) => {
     mountedRef.current = true;
     const elementId = "reader";
     
-    // Cleanup previous instance if it exists (safety check)
+    // Cleanup previous instance if it exists
     if (scannerRef.current) {
-        scannerRef.current.clear();
+        try {
+            if (scannerRef.current.isScanning) {
+                scannerRef.current.stop().catch(() => {});
+            }
+            scannerRef.current.clear();
+        } catch (e) {
+            // ignore cleanup errors
+        }
     }
 
     const startScanner = async () => {
       try {
-        // Optimize for 1D barcodes (like the one in the photo)
-        // Restricting formats improves performance
-        const formatsToSupport = [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.QR_CODE // Keep QR just in case
-        ];
-
         const html5QrCode = new Html5Qrcode(elementId);
         scannerRef.current = html5QrCode;
 
+        // Optimization:
+        // 1. No qrbox in 'start' method = Full screen scanning (More sensitive)
+        // 2. High resolution constraints = Sharper image for barcode lines
         const config = {
-          fps: 30, // High FPS for instant scanning (1s load goal)
-          qrbox: { width: 300, height: 100 }, // Rectangular box better for the long barcodes in the photo
+          fps: 30, 
           aspectRatio: 1.0,
-          formatsToSupport: formatsToSupport,
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ],
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true
           }
         };
 
-        // Force back camera ("environment")
+        const constraints = { 
+            facingMode: "environment",
+            width: { min: 1280, ideal: 1920 }, // HD Resolution is critical for barcodes
+            height: { min: 720, ideal: 1080 },
+            focusMode: "continuous"
+        };
+
         await html5QrCode.start(
-          { facingMode: "environment" }, 
+          constraints, 
           config,
           (decodedText) => {
-            // Success Callback
             if (mountedRef.current) {
-                // Determine if it matches expected pattern (PHYA...)
-                // We perform a loose check to ensure responsiveness
-                if (decodedText && decodedText.length > 5) {
-                    // Play a beep or vibration here if requested in future
-                    onScanSuccess(decodedText);
-                    
-                    // Stop scanning immediately to prevent duplicate reads
-                    if (scannerRef.current?.isScanning) {
-                        scannerRef.current.pause();
-                    }
+                // Check if text looks valid (length check)
+                if (decodedText && decodedText.length > 3) {
+                   // Pause scanning immediately to prevent duplicate reads
+                   if (scannerRef.current?.isScanning) {
+                       scannerRef.current.pause();
+                   }
+                   onScanSuccess(decodedText);
                 }
             }
           },
           (_) => {
-            // Ignore scan failures (happens every frame nothing is detected)
+            // Ignore frame failures
           }
         );
       } catch (err) {
         if (mountedRef.current) {
           console.error("Error starting scanner", err);
-          setInitError("Could not access camera. Please ensure permissions are granted.");
+          setInitError("Camera access failed. Please allow camera permissions.");
         }
       }
     };
 
-    // Small timeout to ensure DOM is ready
-    const timer = setTimeout(() => {
-        startScanner();
-    }, 100);
+    // Immediate start
+    startScanner();
 
     return () => {
       mountedRef.current = false;
-      clearTimeout(timer);
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().then(() => {
-            scannerRef.current?.clear();
-        }).catch(err => console.error("Failed to stop scanner", err));
+      if (scannerRef.current) {
+        try {
+            if (scannerRef.current.isScanning) {
+                scannerRef.current.stop().catch(() => {});
+            }
+            scannerRef.current.clear();
+        } catch (e) {
+            console.error("Cleanup error", e);
+        }
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col items-center justify-center">
-      <div className="w-full max-w-md relative flex flex-col items-center">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+      <div className="w-full h-full relative flex flex-col">
         
         {/* Close Button */}
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-3 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/30 transition-colors"
+          className="absolute top-4 right-4 z-20 p-3 bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60 transition-colors"
         >
-          <X className="w-6 h-6" />
+          <X className="w-8 h-8" />
         </button>
         
-        {/* Header */}
-        <div className="text-white mb-6 text-center z-10">
-            <h2 className="text-xl font-bold flex items-center justify-center gap-2">
-                <Camera className="w-6 h-6" />
-                Scan Patient ID
-            </h2>
-            <p className="text-sm text-gray-400 mt-1">Point camera at the barcode slip</p>
+        {/* Header Overlay */}
+        <div className="absolute top-10 left-0 right-0 z-10 flex flex-col items-center pointer-events-none">
+             <div className="bg-black/40 backdrop-blur-md px-6 py-2 rounded-full flex items-center gap-2 border border-white/10">
+                <Camera className="w-5 h-5 text-primary" />
+                <span className="text-white font-medium">Scan Barcode</span>
+             </div>
         </div>
 
         {/* Scanner Container */}
-        <div className="relative w-full overflow-hidden bg-black rounded-xl border border-gray-800 shadow-2xl">
+        <div className="flex-1 bg-black relative overflow-hidden">
             {initError ? (
-                <div className="flex flex-col items-center justify-center h-80 text-center p-6 text-red-400">
-                    <Zap className="w-10 h-10 mb-2 opacity-50" />
-                    <p>{initError}</p>
+                <div className="flex flex-col items-center justify-center h-full text-center p-6 text-red-400">
+                    <Zap className="w-12 h-12 mb-4 opacity-50" />
+                    <p className="text-lg">{initError}</p>
                 </div>
             ) : (
                 <>
-                    <div id="reader" className="w-full h-[400px]"></div>
+                    {/* The video element container */}
+                    <div id="reader" className="w-full h-full object-cover"></div>
                     
-                    {/* Custom Overlay for Rectangular Barcode */}
+                    {/* Visual Guide Overlay (Does not restrict scanning area now) */}
                     <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                        {/* The Guide Box */}
-                        <div className="w-[300px] h-[100px] border-2 border-primary/70 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] relative">
-                             {/* Corner accents */}
-                             <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-primary -mt-1 -ml-1"></div>
-                             <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-primary -mt-1 -mr-1"></div>
-                             <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-primary -mb-1 -ml-1"></div>
-                             <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-primary -mb-1 -mr-1"></div>
+                        <div className="w-[85%] h-[120px] max-w-sm border-2 border-primary/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] relative">
+                             {/* Animated Laser Line */}
+                             <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500/80 shadow-[0_0_15px_rgba(255,0,0,0.8)] animate-[scan_2s_infinite]"></div>
                              
-                             {/* Scanning Line Animation */}
-                             <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500 shadow-[0_0_10px_rgba(255,0,0,0.8)] animate-[scan_2s_infinite]"></div>
+                             {/* Corners */}
+                             <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-primary -mt-1 -ml-1"></div>
+                             <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-primary -mt-1 -mr-1"></div>
+                             <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-primary -mb-1 -ml-1"></div>
+                             <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-primary -mb-1 -mr-1"></div>
                         </div>
                     </div>
                 </>
             )}
         </div>
         
-        <div className="mt-8 px-6 py-2 bg-gray-900/50 rounded-full border border-gray-700 backdrop-blur-sm">
-            <p className="text-xs text-gray-300 font-mono tracking-wider">
-                AUTO-DETECTING BACK CAMERA
+        {/* Footer Overlay */}
+        <div className="absolute bottom-10 left-0 right-0 text-center pointer-events-none">
+            <p className="text-white/70 text-sm bg-black/30 inline-block px-4 py-1 rounded-full backdrop-blur-sm">
+                Align barcode within the frame
             </p>
         </div>
-        
-        {/* Add custom CSS for scanning animation */}
+
         <style>{`
           @keyframes scan {
-            0% { top: 10%; opacity: 0; }
+            0% { top: 5%; opacity: 0; }
             10% { opacity: 1; }
             90% { opacity: 1; }
-            100% { top: 90%; opacity: 0; }
+            100% { top: 95%; opacity: 0; }
           }
+          /* Force video to fill screen */
           #reader video {
-            object-fit: cover;
+            object-fit: cover !important;
             width: 100% !important;
             height: 100% !important;
           }
