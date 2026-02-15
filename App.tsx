@@ -4,7 +4,7 @@ import Scanner from './components/Scanner';
 import TherapistView from './components/TherapistView';
 import PatientView from './components/PatientView';
 import { getPatientData, subscribeToAllPatients } from './services/storageService';
-import { Activity, Stethoscope, User, Scan, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Stethoscope, User, Scan, Wifi } from 'lucide-react';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>('home');
