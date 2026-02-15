@@ -1,48 +1,67 @@
-import { PatientData } from '../types';
 import { db } from '../firebaseConfig';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, collection } from 'firebase/firestore';
+import { PatientData } from '../types';
 
 /**
- * Saves patient data to Firebase Cloud Firestore.
- * This overwrites the existing document for the specific Patient ID.
+ * Saves patient data to Cloud Firestore.
  */
 export const savePatientData = async (data: PatientData): Promise<void> => {
   try {
-    // We use the Patient ID (e.g., PHYA123...) as the document ID
-    // Collection name is 'patients'
     const patientRef = doc(db, "patients", data.id);
     
-    // Add the current timestamp
-    const dataToSave = {
+    await setDoc(patientRef, {
         ...data,
         lastUpdated: Date.now()
-    };
-
-    await setDoc(patientRef, dataToSave);
+    });
+    
+    console.log(`[Firebase] Document written with ID: ${data.id}`);
   } catch (error) {
-    console.error("Error saving to Firebase:", error);
-    alert("Failed to save data. Check internet connection.");
-    throw error;
+    console.error("Error adding document: ", error);
+    throw new Error("Failed to save to cloud database. Check internet connection.");
   }
 };
 
 /**
- * Retrieves patient data from Firebase Cloud Firestore.
+ * Retrieves patient data from Cloud Firestore (Direct Fetch).
  */
 export const getPatientData = async (id: string): Promise<PatientData | null> => {
   try {
-    const patientRef = doc(db, "patients", id);
-    const docSnap = await getDoc(patientRef);
+    const docRef = doc(db, "patients", id);
+    const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
       return docSnap.data() as PatientData;
     } else {
-      console.log("No such document!");
       return null;
     }
   } catch (error) {
-    console.error("Error fetching from Firebase:", error);
-    alert("Failed to retrieve data. Check internet connection.");
-    return null;
+    console.error("Error getting document:", error);
+    throw new Error("Failed to fetch data.");
   }
+};
+
+/**
+ * Background Sync: Listens to the entire patients collection.
+ * This downloads data in the background so it's ready instantly when scanned.
+ * Returns an unsubscribe function.
+ */
+export const subscribeToAllPatients = (
+    onUpdate: (data: Record<string, PatientData>) => void
+) => {
+    const colRef = collection(db, "patients");
+    
+    // onSnapshot is a real-time listener. 
+    // It fires immediately with current data, and again whenever data changes.
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+        const cache: Record<string, PatientData> = {};
+        snapshot.forEach((doc) => {
+            cache[doc.id] = doc.data() as PatientData;
+        });
+        console.log(`[Background Sync] Synced ${snapshot.size} patient records to local memory.`);
+        onUpdate(cache);
+    }, (error) => {
+        console.error("Background sync failed:", error);
+    });
+
+    return unsubscribe;
 };
