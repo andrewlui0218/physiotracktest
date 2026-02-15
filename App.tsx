@@ -4,7 +4,7 @@ import Scanner from './components/Scanner';
 import TherapistView from './components/TherapistView';
 import PatientView from './components/PatientView';
 import { getPatientData, subscribeToAllPatients } from './services/storageService';
-import { Activity, Stethoscope, User, Scan, Wifi } from 'lucide-react';
+import { Activity, Stethoscope, User, Scan, Wifi, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>('home');
@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [currentPatientId, setCurrentPatientId] = useState<string | null>(null);
   const [patientData, setPatientData] = useState<PatientData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Local Cache State
   const [patientCache, setPatientCache] = useState<Record<string, PatientData>>({});
@@ -34,28 +35,35 @@ const App: React.FC = () => {
     setIsScanning(true);
     setPatientData(null);
     setCurrentPatientId(null);
+    setError(null);
   };
 
   const handleScanSuccess = async (decodedText: string) => {
+    // CRITICAL FIX: Trim whitespace/newlines from barcode scanners
+    const cleanId = decodedText.trim();
+
     setIsScanning(false);
-    setCurrentPatientId(decodedText);
+    setCurrentPatientId(cleanId);
+    setError(null);
 
     // 2. INSTANT RETRIEVAL STRATEGY
     // Check local cache first (0ms delay)
-    if (patientCache[decodedText]) {
+    if (patientCache[cleanId]) {
         console.log("⚡ Instant load from cache");
-        setPatientData(patientCache[decodedText]);
+        setPatientData(patientCache[cleanId]);
         return; 
     }
 
-    // Fallback: If not in cache (e.g. new patient added elsewhere just now), fetch from server
+    // Fallback: Fetch from server if not in cache
     setLoading(true);
     try {
-      const data = await getPatientData(decodedText);
+      const data = await getPatientData(cleanId);
+      // Note: data is null if not found. This is handled in renderContent.
       setPatientData(data);
-    } catch (error) {
-      console.error("Error fetching data", error);
-      alert("Could not retrieve data. Check internet connection or ensure ID exists.");
+    } catch (err: any) {
+      console.error("Error fetching data", err);
+      // UX FIX: Set error state instead of annoying alert
+      setError("Unable to connect to database. Please check your internet connection.");
     } finally {
       setLoading(false);
     }
@@ -70,7 +78,7 @@ const App: React.FC = () => {
       return (
         <div className="flex flex-col items-center justify-center h-screen bg-slate-50">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-slate-500">Retrieving Cloud Records...</p>
+          <p className="text-slate-500">Searching Records...</p>
         </div>
       );
     }
@@ -94,7 +102,6 @@ const App: React.FC = () => {
             setCurrentPatientId(null);
           }}
           onSaveComplete={() => {
-            // No alert needed, smoother UX
             setMode('home');
             setCurrentPatientId(null);
           }}
@@ -114,18 +121,38 @@ const App: React.FC = () => {
       );
     }
 
+    // Error or Not Found State
     if (mode === 'patient' && currentPatientId && !patientData) {
         return (
             <div className="flex flex-col items-center justify-center h-screen p-6 text-center bg-slate-50">
-                <div className="bg-red-100 p-4 rounded-full mb-4">
-                    <Activity className="w-8 h-8 text-red-500" />
+                <div className={`p-4 rounded-full mb-4 ${error ? 'bg-red-100' : 'bg-orange-100'}`}>
+                    {error ? (
+                        <AlertCircle className="w-8 h-8 text-red-500" />
+                    ) : (
+                        <Activity className="w-8 h-8 text-orange-500" />
+                    )}
                 </div>
-                <h2 className="text-xl font-bold mb-2 text-slate-800">No Prescription Found</h2>
-                <p className="text-slate-600 mb-6 font-mono bg-slate-200 px-3 py-1 rounded inline-block">{currentPatientId}</p>
+                <h2 className="text-xl font-bold mb-2 text-slate-800">
+                    {error ? "Connection Error" : "No Prescription Found"}
+                </h2>
+                <p className="text-slate-600 mb-6 font-mono bg-slate-200 px-3 py-1 rounded inline-block">
+                    {currentPatientId}
+                </p>
+                {error && (
+                    <p className="text-sm text-red-600 mb-6 max-w-xs mx-auto">
+                        {error}
+                    </p>
+                )}
                 <div className="space-y-3 w-full max-w-xs">
                     <button 
-                    onClick={() => { setMode('home'); setCurrentPatientId(null); }}
-                    className="w-full bg-white border border-slate-300 px-6 py-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50"
+                        onClick={() => handleScanSuccess(currentPatientId!)}
+                        className="w-full bg-primary text-white px-6 py-3 rounded-lg font-medium hover:bg-secondary transition-colors shadow-sm"
+                    >
+                        Try Again
+                    </button>
+                    <button 
+                        onClick={() => { setMode('home'); setCurrentPatientId(null); }}
+                        className="w-full bg-white border border-slate-300 px-6 py-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50"
                     >
                         Back to Home
                     </button>
@@ -146,7 +173,7 @@ const App: React.FC = () => {
              ) : (
                 <>
                     <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-[10px] text-slate-500 font-medium">Syncing DB...</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Syncing...</span>
                 </>
              )}
         </div>
