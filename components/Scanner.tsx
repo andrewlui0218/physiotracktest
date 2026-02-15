@@ -47,18 +47,20 @@ const Scanner: React.FC<ScannerProps> = ({ onScanSuccess, onClose }) => {
           ],
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true
+          },
+          videoConstraints: {
+            width: { min: 1280, ideal: 1920 },
+            height: { min: 720, ideal: 1080 },
+            facingMode: "environment"
           }
         };
 
-        const constraints = { 
-            facingMode: "environment",
-            width: { min: 1280, ideal: 1920 }, // HD Resolution is critical for barcodes
-            height: { min: 720, ideal: 1080 },
-            focusMode: "continuous"
-        };
+        // The first argument to start() must be strictly the camera selector
+        // It cannot contain other constraints like width/height
+        const cameraIdOrConfig = { facingMode: "environment" };
 
         await html5QrCode.start(
-          constraints, 
+          cameraIdOrConfig, 
           config,
           (decodedText) => {
             if (mountedRef.current) {
